@@ -1,0 +1,48 @@
+# config.example.toml
+
+# Path to Bear's SQLite database.
+# Default shown below; override if Bear is installed in a non-standard location.
+bear_db = "~/Library/Group Containers/9K33E3U3T4.net.shinyfrog.bear/Application Data/database.sqlite"
+
+# Local path to the git repository where notes are exported.
+# Required — no default.
+repo_path = "~/denote-notes"
+
+# Git remote name and branch to push to.
+remote = "origin"
+branch = "main"
+
+# Whether to push after each commit. Set to false for local-only backup.
+push_on_sync = true
+
+# Seconds to wait after a database change before syncing.
+# Prevents rapid-fire commits while actively editing in Bear.
+debounce_secs = 5
+
+# Tags to exclude from export. Notes with ONLY excluded tags are skipped.
+# Notes with at least one non-excluded tag are still exported.
+exclude_tags = ["private", "scratch"]
+
+# Include trashed or archived notes in the export.
+include_trashed = false
+include_archived = false
+
+# Commit message template. Supports {count} placeholder.
+commit_template = "denote: synced {count} notes"
+
+# Markdown export options
+[export]
+# Include YAML frontmatter with metadata (tags, dates, pinned status)
+frontmatter = true
+
+# How to handle Bear's image/file references.
+# "ignore"  — strip [image:...] and [file:...] markers
+# "placeholder" — leave markers as-is for downstream tooling
+# "copy"    — copy assets into an _assets/ dir in the repo
+attachment_mode = "placeholder"
+
+# Filename strategy for exported markdown files.
+# "title"    — slugified note title (e.g., my-project-notes.md)
+# "uuid"     — Bear's unique identifier (e.g., A1B2C3D4-....md)
+# "title-uuid" — slugified title with short UUID suffix (e.g., my-project-notes-a1b2c3.md)
+filename_strategy = "title-uuid"

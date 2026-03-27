@@ -1,0 +1,23 @@
+[package]
+name = "denote"
+version = "0.1.0"
+edition = "2021"
+description = "A lightweight macOS daemon that watches Bear notes and syncs them as markdown files to a git repository"
+license = "MIT"
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+git2 = "0.19"
+notify = "7"
+notify-debouncer-full = "0.4"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2"
+slug = "0.1"
+time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+directories = "5"
+regex = "1"
