@@ -33,6 +33,16 @@ pub fn create_test_bear_db(dir: &Path) -> PathBuf {
             FOREIGN KEY (Z_5NOTES) REFERENCES ZSFNOTE(Z_PK),
             FOREIGN KEY (Z_13TAGS) REFERENCES ZSFNOTETAG(Z_PK)
         );
+
+        CREATE TABLE ZSFNOTEFILE (
+            Z_PK INTEGER PRIMARY KEY,
+            ZUNIQUEIDENTIFIER TEXT NOT NULL,
+            ZFILENAME TEXT NOT NULL,
+            ZNORMALIZEDFILEEXTENSION TEXT,
+            ZNOTE INTEGER,
+            ZPERMANENTLYDELETED INTEGER DEFAULT 0,
+            FOREIGN KEY (ZNOTE) REFERENCES ZSFNOTE(Z_PK)
+        );
         ",
     )
     .unwrap();

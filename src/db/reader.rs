@@ -82,10 +82,52 @@ impl BearReader {
 
 const CORE_DATA_EPOCH_OFFSET: i64 = 978307200;
 
+const IMAGE_EXTENSIONS: &[&str] = &[
+    "png", "jpg", "jpeg", "gif", "heic", "webp", "tiff", "tif", "bmp", "svg",
+];
+
+use crate::db::models::BearAttachment;
+
+impl BearReader {
+    /// Load all attachments keyed by note Z_PK.
+    fn load_attachments(
+        conn: &Connection,
+    ) -> Result<std::collections::HashMap<i64, Vec<BearAttachment>>> {
+        let mut stmt = conn.prepare(
+            "SELECT ZNOTE, ZUNIQUEIDENTIFIER, ZFILENAME, ZNORMALIZEDFILEEXTENSION FROM ZSFNOTEFILE WHERE ZPERMANENTLYDELETED = 0 AND ZNOTE IS NOT NULL",
+        )?;
+
+        let mut map: std::collections::HashMap<i64, Vec<BearAttachment>> =
+            std::collections::HashMap::new();
+
+        let rows = stmt.query_map([], |row| {
+            let note_pk: i64 = row.get(0)?;
+            let uuid: String = row.get(1)?;
+            let filename: String = row.get(2)?;
+            let ext: Option<String> = row.get(3)?;
+            Ok((note_pk, uuid, filename, ext))
+        })?;
+
+        for row in rows {
+            let (note_pk, uuid, filename, ext) = row?;
+            let is_image = ext
+                .as_deref()
+                .map(|e| IMAGE_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+                .unwrap_or(false);
+            map.entry(note_pk)
+                .or_default()
+                .push(BearAttachment { uuid, filename, is_image });
+        }
+
+        Ok(map)
+    }
+}
+
 impl NoteSource for BearReader {
     fn fetch_notes(&self, include_trashed: bool, include_archived: bool) -> Result<Vec<BearNote>> {
         let conn = self.open_connection()?;
         let schema = Self::discover_schema(&conn)?;
+        let attachments_map = Self::load_attachments(&conn)?;
 
         let mut where_clauses = Vec::new();
         if !include_trashed {
@@ -112,7 +154,8 @@ impl NoteSource for BearReader {
                 COALESCE(n.ZTRASHED, 0),
                 COALESCE(n.ZARCHIVED, 0),
                 COALESCE(n.ZPINNED, 0),
-                GROUP_CONCAT(t.ZTITLE, '||')
+                GROUP_CONCAT(t.ZTITLE, '||'),
+                n.Z_PK
             FROM ZSFNOTE n
             LEFT JOIN {jt} jt ON jt.{note_col} = n.Z_PK
             LEFT JOIN ZSFNOTETAG t ON t.Z_PK = jt.{tag_col}
@@ -139,6 +182,7 @@ impl NoteSource for BearReader {
                 let is_archived: i32 = row.get(6)?;
                 let is_pinned: i32 = row.get(7)?;
                 let tags_raw: Option<String> = row.get(8)?;
+                let z_pk: i64 = row.get(9)?;
 
                 let tags: Vec<String> = tags_raw
                     .map(|s| s.split("||").map(|t| t.to_string()).collect())
@@ -154,19 +198,22 @@ impl NoteSource for BearReader {
                     is_archived != 0,
                     is_pinned != 0,
                     tags,
+                    z_pk,
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         notes
             .into_iter()
-            .map(|(id, title, text, created_str, modified_str, is_trashed, is_archived, is_pinned, tags)| {
+            .map(|(id, title, text, created_str, modified_str, is_trashed, is_archived, is_pinned, tags, z_pk)| {
                 let created = parse_sqlite_datetime(&created_str).map_err(|e| {
                     rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Text, Box::new(e))
                 })?;
                 let modified = parse_sqlite_datetime(&modified_str).map_err(|e| {
                     rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(e))
                 })?;
+
+                let attachments = attachments_map.get(&z_pk).cloned().unwrap_or_default();
 
                 Ok(BearNote {
                     id,
@@ -178,6 +225,7 @@ impl NoteSource for BearReader {
                     is_trashed,
                     is_archived,
                     is_pinned,
+                    attachments,
                 })
             })
             .collect::<Result<Vec<_>>>()

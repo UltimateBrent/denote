@@ -57,7 +57,7 @@ fn test_render_exported_note() {
     let notes = reader.fetch_notes(false, false).unwrap();
 
     let project = notes.iter().find(|n| n.id == "NOTE-UUID-AAAA").unwrap();
-    let rendered = markdown::render(project, true, &AttachmentMode::Placeholder);
+    let rendered = markdown::render(project, true, &AttachmentMode::Placeholder, None);
 
     assert!(rendered.starts_with("---\n"));
     assert!(rendered.contains("id: \"NOTE-UUID-AAAA\""));
@@ -94,7 +94,7 @@ fn test_full_export_with_filenames() {
 
     for note in &notes {
         let filename = manifest.generate_filename(note, &export.filename_strategy);
-        let content = markdown::render(note, export.frontmatter, &export.attachment_mode);
+        let content = markdown::render(note, export.frontmatter, &export.attachment_mode, None);
         std::fs::write(repo_dir.join(&filename), content).unwrap();
         manifest.set(note.id.clone(), filename);
     }

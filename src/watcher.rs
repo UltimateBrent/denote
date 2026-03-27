@@ -33,7 +33,13 @@ pub fn sync_cycle(config: &DenoteConfig) -> Result<usize> {
     }
 
     info!(changes = changes.len(), "Applying changes");
-    let count = diff::apply_changes(&changes, &mut manifest, &config.repo_path, &config.export)?;
+    let count = diff::apply_changes(
+        &changes,
+        &mut manifest,
+        &config.repo_path,
+        &config.export,
+        Some(&config.bear_db),
+    )?;
 
     let message = config
         .commit_template

@@ -57,7 +57,7 @@ fn test_diff_no_changes_after_apply() {
 
     // First pass: apply all changes
     let changes = diff::compute_diff(&notes, &manifest, &repo_dir, &[], &export_config);
-    let count = diff::apply_changes(&changes, &mut manifest, &repo_dir, &export_config).unwrap();
+    let count = diff::apply_changes(&changes, &mut manifest, &repo_dir, &export_config, None).unwrap();
     assert_eq!(count, 3);
 
     // Second pass: no changes
@@ -113,7 +113,7 @@ fn test_diff_detects_modification() {
 
     // Apply initial changes
     let changes = diff::compute_diff(&notes, &manifest, &repo_dir, &[], &export_config);
-    diff::apply_changes(&changes, &mut manifest, &repo_dir, &export_config).unwrap();
+    diff::apply_changes(&changes, &mut manifest, &repo_dir, &export_config, None).unwrap();
 
     // Tamper with a file to simulate modification
     let project_filename = manifest.filename_for("NOTE-UUID-AAAA").unwrap();
@@ -145,7 +145,7 @@ fn test_diff_detects_deletion() {
 
     // Apply initial changes
     let changes = diff::compute_diff(&notes, &manifest, &repo_dir, &[], &export_config);
-    diff::apply_changes(&changes, &mut manifest, &repo_dir, &export_config).unwrap();
+    diff::apply_changes(&changes, &mut manifest, &repo_dir, &export_config, None).unwrap();
 
     // Simulate a note being trashed: remove it from the notes list
     let notes_without_project: Vec<_> = notes
@@ -169,7 +169,7 @@ fn test_diff_detects_deletion() {
 
     // Apply deletion
     let count =
-        diff::apply_changes(&changes, &mut manifest, &repo_dir, &export_config).unwrap();
+        diff::apply_changes(&changes, &mut manifest, &repo_dir, &export_config, None).unwrap();
     assert_eq!(count, 1);
     assert!(manifest.filename_for("NOTE-UUID-AAAA").is_none());
 

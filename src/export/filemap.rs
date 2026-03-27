@@ -105,6 +105,7 @@ mod tests {
             is_trashed: false,
             is_archived: false,
             is_pinned: false,
+            attachments: vec![],
         }
     }
 

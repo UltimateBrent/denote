@@ -1,7 +1,9 @@
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use crate::config::ExportConfig;
+use tracing::{debug, warn};
+
+use crate::config::{AttachmentMode, ExportConfig};
 use crate::db::models::BearNote;
 use crate::export::filemap::Manifest;
 use crate::export::markdown;
@@ -75,12 +77,26 @@ fn filter_excluded<'a>(notes: &'a [BearNote], exclude_tags: &[String]) -> Vec<&'
 
 /// Check if a note's rendered content differs from what's on disk.
 fn is_modified(note: &BearNote, file_path: &Path, export_config: &ExportConfig) -> bool {
-    let rendered =
-        markdown::render(note, export_config.frontmatter, &export_config.attachment_mode);
+    let assets_subdir = assets_subdir_for(note);
+    let rendered = markdown::render(
+        note,
+        export_config.frontmatter,
+        &export_config.attachment_mode,
+        assets_subdir.as_deref(),
+    );
 
     match std::fs::read_to_string(file_path) {
         Ok(existing) => existing != rendered,
         Err(_) => true, // file missing = modified
+    }
+}
+
+fn assets_subdir_for(note: &BearNote) -> Option<String> {
+    if note.attachments.is_empty() {
+        None
+    } else {
+        let short_id = &note.id[..note.id.len().min(8)];
+        Some(format!("_assets/{short_id}"))
     }
 }
 
@@ -90,36 +106,41 @@ pub fn apply_changes(
     manifest: &mut Manifest,
     repo_path: &Path,
     export_config: &ExportConfig,
+    bear_db_path: Option<&Path>,
 ) -> crate::errors::Result<usize> {
     let mut count = 0;
 
     for change in changes {
         match change {
-            Change::Added(note) => {
-                let filename =
-                    manifest.generate_filename(note, &export_config.filename_strategy);
-                let content = markdown::render(
-                    note,
-                    export_config.frontmatter,
-                    &export_config.attachment_mode,
-                );
-                std::fs::write(repo_path.join(&filename), content)?;
-                manifest.set(note.id.clone(), filename);
-                count += 1;
-            }
-            Change::Modified(note) => {
-                let filename = manifest
-                    .filename_for(&note.id)
-                    .cloned()
-                    .unwrap_or_else(|| {
+            Change::Added(note) | Change::Modified(note) => {
+                let filename = match change {
+                    Change::Added(_) => {
                         manifest.generate_filename(note, &export_config.filename_strategy)
-                    });
+                    }
+                    Change::Modified(_) => manifest
+                        .filename_for(&note.id)
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            manifest.generate_filename(note, &export_config.filename_strategy)
+                        }),
+                    _ => unreachable!(),
+                };
+
+                let assets_subdir = assets_subdir_for(note);
                 let content = markdown::render(
                     note,
                     export_config.frontmatter,
                     &export_config.attachment_mode,
+                    assets_subdir.as_deref(),
                 );
                 std::fs::write(repo_path.join(&filename), content)?;
+
+                if matches!(export_config.attachment_mode, AttachmentMode::Copy) {
+                    if let Some(db_path) = bear_db_path {
+                        copy_attachments(note, repo_path, db_path)?;
+                    }
+                }
+
                 manifest.set(note.id.clone(), filename);
                 count += 1;
             }
@@ -127,6 +148,14 @@ pub fn apply_changes(
                 let file_path = repo_path.join(filename);
                 if file_path.exists() {
                     std::fs::remove_file(&file_path)?;
+                }
+                if matches!(export_config.attachment_mode, AttachmentMode::Copy) {
+                    let short_id = &id[..id.len().min(8)];
+                    let assets_dir = repo_path.join("_assets").join(short_id);
+                    if assets_dir.is_dir() {
+                        std::fs::remove_dir_all(&assets_dir)?;
+                        debug!(dir = %assets_dir.display(), "Removed assets directory");
+                    }
                 }
                 manifest.remove(id);
                 count += 1;
@@ -136,6 +165,42 @@ pub fn apply_changes(
 
     manifest.save(repo_path)?;
     Ok(count)
+}
+
+fn copy_attachments(
+    note: &BearNote,
+    repo_path: &Path,
+    bear_db_path: &Path,
+) -> crate::errors::Result<()> {
+    if note.attachments.is_empty() {
+        return Ok(());
+    }
+
+    let short_id = &note.id[..note.id.len().min(8)];
+    let assets_dir: PathBuf = repo_path.join("_assets").join(short_id);
+    std::fs::create_dir_all(&assets_dir)?;
+
+    for attachment in &note.attachments {
+        let src = attachment.source_path(bear_db_path);
+        let dst = assets_dir.join(&attachment.filename);
+
+        if src.exists() {
+            std::fs::copy(&src, &dst)?;
+            debug!(
+                src = %src.display(),
+                dst = %dst.display(),
+                "Copied attachment"
+            );
+        } else {
+            warn!(
+                path = %src.display(),
+                note_id = %note.id,
+                "Attachment file not found, skipping"
+            );
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -155,6 +220,7 @@ mod tests {
             is_trashed: false,
             is_archived: false,
             is_pinned: false,
+            attachments: vec![],
         }
     }
 
@@ -222,7 +288,7 @@ mod tests {
         };
 
         let changes = compute_diff(&notes, &manifest, &dir, &[], &export_config);
-        let count = apply_changes(&changes, &mut manifest, &dir, &export_config).unwrap();
+        let count = apply_changes(&changes, &mut manifest, &dir, &export_config, None).unwrap();
         assert_eq!(count, 1);
         assert!(manifest.filename_for("A").is_some());
 
