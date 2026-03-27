@@ -1,4 +1,4 @@
-# denote
+# DENote
 
 A lightweight macOS daemon that watches Bear notes and syncs them as markdown files to a git repository. Designed for users who want their Bear notes accessible on remote machines — e.g., for an AI agent running on a separate server.
 
